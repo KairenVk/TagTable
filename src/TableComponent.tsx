@@ -13,10 +13,14 @@ import React, {useEffect, useState} from "react";
 import {ResponseObject} from "./ResponseObject";
 import { visuallyHidden } from '@mui/utils';
 import {ItemObject} from "./ItemObject";
+import LoadingComponent from "./LoadingComponent";
+import PropTypes from "prop-types";
+import ErrorComponent from "./ErrorComponent";
 
 
 
 type Order = 'asc' | 'desc';
+type LoadingState = 'loading' | 'loaded' | 'error';
 
 function descendingComparator<T>(a: T, b: T, orderBy: keyof T) {
     if (b[orderBy] < a[orderBy]) {
@@ -106,38 +110,51 @@ function EnhancedTableHead(props: EnhancedTableProps) {
     );
 }
 
-function TableComponent() {
+function TableComponent(props: any) {
+    
     let emptyObj: ResponseObject = {has_more:false,items:[],quota_max:0,quota_remaining:0}
+
     const [order, setOrder] = React.useState<Order>('asc');
     const [orderBy, setOrderBy] = React.useState<keyof ItemObject>('name');
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(5);
-    const [tagObject, setTagObject] = useState<ResponseObject>(emptyObj);
-    const [loadingState, setLoadingState] = useState("loading");
+    const [responseObject, setResponseObject] = useState<ResponseObject>(emptyObj);
+    const [loadingState, setLoadingState] = useState<LoadingState>('loading');
+
+    useEffect(() => {
+        setRowsPerPage(props.rows);
+        setOrder(props.orderDirection);
+        setOrderBy(props.orderByColumn);
+        setLoadingState(props.loadingState);
+        setPage(props.page);
+    }, [props.loadingState, props.orderByColumn, props.orderDirection, props.page, props.rows]);
 
 
     useEffect(() => {
         fetch("https://api.stackexchange.com/tags?site=stackoverflow&pagesize=100", {
             method: "GET",
         })
-            .then((response) => response.json())
+            .then((response) => {
+                return response.json()
+            })
             .then((responseData) => {
                 console.log(responseData)
-                setTagObject(responseData);
-                setLoadingState("loaded");
-
-            })
-            .catch((error) => {
-                console.log(error);
-                setLoadingState("error");
+                if(responseData.error_id !== undefined) {
+                    setResponseObject(responseData)
+                    setLoadingState("error")
+                }
+                else {
+                    setResponseObject(responseData);
+                    setLoadingState("loaded");
+                }
             })
     }, []);
 
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
+    }
 
-    };
     const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
         setRowsPerPage(parseInt(event.target.value, 10));
         setPage(0);
@@ -152,85 +169,101 @@ function TableComponent() {
         setOrderBy(property);
     };
 
-    const emptyRows =
-        page > 0 ? Math.max(0, (1 + page) * rowsPerPage - tagObject.items.length) : 0;
+    const emptyRows = page > 0 ? Math.max(0, (1 + page) * rowsPerPage - responseObject.items.length) : 0;
 
     const visibleRows = React.useMemo(
         () =>
-            tagObject.items.sort(getComparator(order, orderBy)).slice(page * rowsPerPage,
+            responseObject.items?.sort(getComparator(order, orderBy)).slice(page * rowsPerPage,
                 page * rowsPerPage + rowsPerPage),
-        [order, orderBy, page, rowsPerPage, tagObject],
+        [order, orderBy, page, rowsPerPage, responseObject],
     );
 
     if (loadingState === "loading") {
         return (
-            <h1>LOADING</h1>
+            <LoadingComponent/>
         )
     }
-    return (
-        <Box sx={{ width: '100%' }}>
-            <Paper sx={{ width: '100%', mb: 2 }}>
-                <TablePagination
-                    rowsPerPageOptions={[5, 10, 25, 50]}
-                    component="div"
-                    count={tagObject.items.length}
-                    rowsPerPage={rowsPerPage}
-                    page={page}
-                    onPageChange={handleChangePage}
-                    onRowsPerPageChange={handleChangeRowsPerPage}
-                    align='center'
-                />
-                <TableContainer>
-                    <Table
-                        sx={{ minWidth: 750 }}
-                        aria-labelledby="tableTitle"
-                        size={'medium'}
-                    >
-                        <EnhancedTableHead
-                            order={order}
-                            orderBy={orderBy}
-                            onRequestSort={handleRequestSort}
-                            rowCount={tagObject.items.length}
-                        />
-                        <TableBody>
-                            {visibleRows.map((row, index) => {
-                                const labelId = `enhanced-table-checkbox-${index}`;
+    else if (loadingState === "error") {
+        return (
+            <ErrorComponent responseObject={responseObject}/>
+        )
+    }
+    else {
+        return (
+            <Box sx={{width: '100%'}}>
+                <Paper sx={{width: '100%', mb: 2}}>
+                    <TablePagination
+                        rowsPerPageOptions={[5, 10, 25, 50]}
+                        component="div"
+                        count={responseObject.items.length}
+                        rowsPerPage={rowsPerPage}
+                        page={page}
+                        onPageChange={handleChangePage}
+                        onRowsPerPageChange={handleChangeRowsPerPage}
+                        align='center'
+                    />
+                    <TableContainer>
+                        <Table
+                            sx={{minWidth: 750}}
+                            aria-labelledby="tableTitle"
+                            size={'medium'}
+                        >
+                            <EnhancedTableHead
+                                order={order}
+                                orderBy={orderBy}
+                                onRequestSort={handleRequestSort}
+                                rowCount={responseObject.items.length}
+                            />
+                            <TableBody>
+                                {visibleRows.map((row, index) => {
+                                    const labelId = `enhanced-table-checkbox-${index}`;
 
-                                return (
+                                    return (
+                                        <TableRow>
+                                            <TableCell
+                                                component="th"
+                                                id={labelId}
+                                                scope="row"
+                                                padding="none"
+                                            >
+                                                {row.name}
+                                            </TableCell>
+                                            <TableCell align="right">{row.count}</TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                                {emptyRows > 0 && (
                                     <TableRow
-                                        hover
-                                        role="checkbox"
-                                        tabIndex={-1}
-                                        key={index}
-                                        sx={{ cursor: 'pointer' }}
+                                        style={{
+                                            height: (53) * emptyRows,
+                                        }}
                                     >
-                                        <TableCell
-                                            component="th"
-                                            id={labelId}
-                                            scope="row"
-                                            padding="none"
-                                        >
-                                            {row.name}
-                                        </TableCell>
-                                        <TableCell align="right">{row.count}</TableCell>
+                                        <TableCell colSpan={6}/>
                                     </TableRow>
-                                );
-                            })}
-                            {emptyRows > 0 && (
-                                <TableRow
-                                    style={{
-                                        height: (53) * emptyRows,
-                                    }}
-                                >
-                                    <TableCell colSpan={6} />
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-            </Paper>
-        </Box>
-    );
+                                )}
+                            </TableBody>
+                        </Table>
+                    </TableContainer>
+                </Paper>
+            </Box>
+        );
+    }
+}
+
+TableComponent.propTypes = {
+    rows: PropTypes.number.isRequired,
+    orderDirection: PropTypes.oneOf(['asc', 'desc']),
+    orderByColumn: PropTypes.oneOf<keyof ItemObject>(['name', 'count']),
+    loadingState: PropTypes.oneOf(['loading','loaded','error']),
+    page: PropTypes.number.isRequired
+}
+
+TableComponent.defaultProps = {
+    rows: 5,
+    orderDirection: 'asc',
+    orderByColumn: 'name',
+    loadingState: 'loading',
+    page: 0
 }
 
 export default TableComponent;

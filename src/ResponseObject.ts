@@ -5,4 +5,7 @@ export interface ResponseObject {
     items: Array<ItemObject>,
     quota_max: number,
     quota_remaining: number
+    error_id?: number
+    error_message?: string
+    error_name?: string
 }
